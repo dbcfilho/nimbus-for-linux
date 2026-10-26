@@ -1,0 +1,10 @@
+# nimbus-linux: permissões e isolamento do SteelSeries Nimbus (Bluetooth, 0111:1420)
+
+# o daemon lê o relatório bruto pelo hidraw do controle
+SUBSYSTEM=="hidraw", KERNELS=="0005:0111:1420.*", TAG+="uaccess"
+
+# e cria o gamepad virtual em /dev/uinput
+KERNEL=="uinput", SUBSYSTEM=="misc", TAG+="uaccess", OPTIONS+="static_node=uinput"
+
+# esconde o nó evdev quebrado do hid-generic do SDL/libinput (ele também é agarrado com EVIOCGRAB)
+SUBSYSTEM=="input", ATTRS{name}=="Nimbus", ENV{ID_INPUT_JOYSTICK}="", ENV{ID_INPUT_KEY}=""

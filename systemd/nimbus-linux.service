@@ -1,0 +1,16 @@
+[Unit]
+Description=SteelSeries Nimbus -> gamepad virtual (evdev)
+
+[Service]
+Type=simple
+ExecStart=%h/.local/bin/nimbus-linux
+ExecReload=/bin/kill -HUP $MAINPID
+Restart=always
+RestartSec=2
+NoNewPrivileges=yes
+ProtectSystem=strict
+ProtectHome=read-only
+PrivateTmp=yes
+
+[Install]
+WantedBy=default.target
