@@ -1,12 +1,16 @@
 #!/bin/sh
-# nimbus-profile [standard|game]: troca o perfil do gamepad virtual do Nimbus.
+# nimbus-profile [standard|game|pedal]: troca o perfil do gamepad virtual do Nimbus.
 # Sem argumento, mostra o perfil atual. O daemon recarrega por SIGHUP, sem reconectar o controle.
 conf="${XDG_CONFIG_HOME:-$HOME/.config}/nimbus-linux/profile"
 case "$1" in
   "") cat "$conf" 2>/dev/null || echo standard; exit 0 ;;
-  standard|game) ;;
-  *) echo "uso: nimbus-profile [standard|game]" >&2; exit 2 ;;
+  standard|game|pedal) ;;
+  *) echo "uso: nimbus-profile [standard|game|pedal]" >&2; exit 2 ;;
 esac
 mkdir -p "$(dirname "$conf")"
 echo "$1" > "$conf"
-systemctl --user kill --signal=HUP nimbus-linux.service 2>/dev/null || true
+systemctl --user kill --signal=HUP nimbus-linux.service 2>/dev/null || { echo "nimbus-linux não está rodando" >&2; exit 1; }
+# confirma o que o daemon carregou de fato (um daemon antigo pode não conhecer o perfil)
+sleep 1
+got=$(journalctl --user -u nimbus-linux.service -n 5 -o cat 2>/dev/null | sed -n 's/^gamepad virtual: perfil \([a-z]*\).*/\1/p' | tail -1)
+if [ "$got" = "$1" ]; then echo "perfil ativo: $got"; else echo "aviso: o daemon carregou '${got:-?}', não '$1'; reinicie com: systemctl --user restart nimbus-linux" >&2; exit 1; fi

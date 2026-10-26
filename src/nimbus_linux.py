@@ -11,7 +11,8 @@ Layout do relatório (descritor HID lido do próprio controle):
   [12]     bit0 = Home/Menu (Consumer AC Home); sozinho vira Start
            L1+Home = L3, R1+Home = R3, L1+R1+Home = Back (como no MFIGamepadFeeder)
   [13..16] stick esq X, esq Y, dir X, dir Y (int8, -127..127; cima = positivo)
-Relatório de saída (1 byte): nibble baixo = LEDs de jogador.
+Relatório de saída (1 byte, sem Report ID): nibble baixo = LEDs de jogador. No hidraw a escrita
+leva o número do relatório na frente: bytes([0, máscara]).
 
 Perfis do gamepad virtual:
   standard  identidade Xbox 360, layout do xpad (SDL, Steam, Proton, emuladores)
@@ -45,7 +46,8 @@ BTN_THUMBL, BTN_THUMBR = 0x13D, 0x13E
 ABS_X, ABS_Y, ABS_Z, ABS_RX, ABS_RY, ABS_RZ, ABS_HAT0X, ABS_HAT0Y = 0, 1, 2, 3, 4, 5, 16, 17
 
 DPAD_ON = 0x40  # D-pad é analógico 0..255; acima disso conta como pressionado
-PROFILES = ("standard", "game")
+PROFILES = ("standard", "game", "pedal")
+JOYSTICK_PROFILES = ("game", "pedal")  # botões em BTN_JOYSTICK; pedal = gatilhos em repouso no mínimo
 PROFILE_FILE = os.path.join(
     os.environ.get("XDG_CONFIG_HOME") or os.path.expanduser("~/.config"), "nimbus-linux", "profile")
 
@@ -58,9 +60,11 @@ IDENTITIES = {
 # índice no relatório -> botão evdev. No perfil game os botões ficam na faixa BTN_JOYSTICK (0x120..):
 # sem BTN_SOUTH/EAST/... o SDL não classifica o dispositivo como gamepad, e o Wine passa os eixos
 # crus em vez de fundir os gatilhos num Z "XInput".
+_JOY = ((4, 0x120), (5, 0x121), (6, 0x122), (7, 0x123), (8, 0x124), (9, 0x125))
 BUTTONS = {
     "standard": ((4, BTN_SOUTH), (5, BTN_EAST), (6, BTN_NORTH), (7, BTN_WEST), (8, BTN_TL), (9, BTN_TR)),
-    "game": ((4, 0x120), (5, 0x121), (6, 0x122), (7, 0x123), (8, 0x124), (9, 0x125)),
+    "game": _JOY,
+    "pedal": _JOY,
 }
 HOME_CODES = {"start": BTN_START, "mode": BTN_MODE}
 GAME_HOME = 0x126
@@ -84,11 +88,14 @@ def read_profile(path=PROFILE_FILE):
             name = f.read().strip()
     except OSError:
         return "standard"
-    return name if name in PROFILES else "standard"
+    if name in PROFILES:
+        return name
+    log("aviso: perfil desconhecido %r em %s; usando standard" % (name, path))
+    return "standard"
 
 
 def key_codes(profile):
-    if profile == "game":
+    if profile in JOYSTICK_PROFILES:
         return [c for _, c in BUTTONS["game"]] + [GAME_HOME, GAME_BACK, GAME_THUMBL, GAME_THUMBR]
     return list(STANDARD_KEYS)
 
@@ -97,7 +104,7 @@ def abs_setup(profile):
     """(código, min, max, fuzz, flat) de cada eixo do gamepad virtual."""
     # DirectInput trata o repouso no mínimo como eixo empurrado até o fim; com faixa -255..255
     # o repouso (0) fica no centro e o puxão vai de 0 a 255 sem perder passos
-    tlo = -255 if profile == "game" else 0
+    tlo = -255 if profile == "game" else 0  # pedal e standard: repouso no mínimo, curso inteiro
     return ((ABS_X, -32768, 32767, 16, 128), (ABS_Y, -32768, 32767, 16, 128),
             (ABS_RX, -32768, 32767, 16, 128), (ABS_RY, -32768, 32767, 16, 128),
             (ABS_Z, tlo, 255, 0, 0), (ABS_RZ, tlo, 255, 0, 0),
@@ -109,7 +116,7 @@ def translate(r, profile, home="start", flip_y=False):
     pressed = {idx: bool(r[idx]) for idx, _ in BUTTONS[profile]}
     menu = bool(r[12] & 1)
     back = thumbl = thumbr = False
-    if menu and (profile == "game" or home == "start"):
+    if menu and (profile in JOYSTICK_PROFILES or home == "start"):
         # o Nimbus só tem um botão de menu; o driver original (MFIGamepadFeeder) cria o resto por
         # combinação: L1+Home = L3, R1+Home = R3, L1+R1+Home = Back. A combinação consome os botões.
         l1, r1 = pressed[8], pressed[9]
@@ -123,7 +130,7 @@ def translate(r, profile, home="start", flip_y=False):
             menu = False
             pressed[8] = pressed[9] = False
     ev = [(EV_KEY, code, int(pressed[idx])) for idx, code in BUTTONS[profile]]
-    if profile == "game":
+    if profile in JOYSTICK_PROFILES:
         ev += [(EV_KEY, GAME_HOME, int(menu)), (EV_KEY, GAME_BACK, int(back)),
                (EV_KEY, GAME_THUMBL, int(thumbl)), (EV_KEY, GAME_THUMBR, int(thumbr))]
     else:
@@ -207,7 +214,7 @@ class Daemon:
     def config(self):
         """(perfil, identidade) vigentes: opções da linha de comando valem mais que o arquivo."""
         profile = self.args.profile or read_profile()
-        identity = self.args.identity or ("nimbus" if profile == "game" else "xbox360")
+        identity = self.args.identity or ("nimbus" if profile in JOYSTICK_PROFILES else "xbox360")
         return profile, identity
 
     def make_pad(self):
@@ -229,8 +236,8 @@ class Daemon:
             pad = self.make_pad()
             log("conectado: %s" % hidraw)
             if self.args.led:
-                try:
-                    os.write(hfd, bytes([self.args.led & 0x0F]))
+                try:  # o iOS acende o LED do número do jogador ao iniciar um jogo; fazemos o mesmo
+                    os.write(hfd, bytes([0, self.args.led & 0x0F]))
                 except OSError as e:
                     log("aviso: LED não aceito: %s" % e)
             while not self.stop:
@@ -249,6 +256,8 @@ class Daemon:
                         pass
                 if hfd in ready:
                     data = os.read(hfd, 64)
+                    if not data:
+                        raise OSError(0, "fim do hidraw")
                     if len(data) == REPORT_LEN:
                         pad.update(data)
         except OSError as e:
@@ -334,8 +343,8 @@ def main(argv=None):
                     help="botão evdev do Home/Menu do Nimbus no perfil standard (padrão: start)")
     ap.add_argument("--flip-y", action="store_true",
                     help="não inverte o Y dos analógicos (o padrão já converte cima-positivo para evdev)")
-    ap.add_argument("--led", type=int, default=0,
-                    help="máscara dos LEDs de jogador (0 = não mexer; o hidraw costuma recusar com EINVAL)")
+    ap.add_argument("--led", type=int, default=1,
+                    help="máscara dos LEDs de jogador ao conectar: 1, 2, 4, 8 = jogador 1 a 4 (0 = não mexer)")
     ap.add_argument("--no-grab", action="store_true", help="não esconder o nó evdev original")
     ap.add_argument("--monitor", type=int, metavar="SEG", help="só observa o relatório bruto por SEG segundos")
     args = ap.parse_args(argv)

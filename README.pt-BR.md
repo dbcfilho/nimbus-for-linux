@@ -65,7 +65,7 @@ O DirectInput configura cada eixo com faixa simétrica, então um gatilho em rep
 
 - Opções: `nimbus-linux --help` (`--monitor SEGUNDOS` mostra os relatórios brutos).
 - Protocolo de 17 bytes: [docs/protocol.md](docs/protocol.md).
-- LEDs de jogador: o hidraw recusa a escrita (`EINVAL`), por isso `--led` vem desligado.
+- LED de jogador: o LED 1 acende ao conectar (`--led 0` desliga, `--led 2/4/8` escolhe outro).
 - Testado em um controle e uma máquina (Debian 13, kernel 7.1, Wine-GE 8). Relatos de outras distribuições são bem-vindos.
 
 ## Desenvolvimento

@@ -9,7 +9,21 @@ Bluetooth classic, `0111:1420`. The input report is **17 bytes with no Report ID
 | 12 | bit 0 = Home/Menu | |
 | 13–16 | left X, left Y, right X, right Y | int8 −127…127, **up is positive** |
 
-Output report: 1 byte, low nibble = player LEDs. Writing it through hidraw fails with `EINVAL`.
+Output report: 1 byte, no Report ID, low nibble = player LEDs (1, 2, 4, 8 = player 1 to 4). Through hidraw the report number goes first: `write(fd, [0x00, mask])`. Writing the mask alone fails with `EINVAL`. On iOS the host lights the LED of the player number when a game starts; the driver does the same on connect.
+
+## Bluetooth SDP record
+
+Read from the controller over L2CAP (PSM 1) with `tools/sdp_dump.py`. The services are not listed in the public browse group, so query them by UUID.
+
+| Service | Notable attributes |
+|---|---|
+| HID `0x1124` | subclass `0x08` (gamepad), VirtualCable, ReconnectInitiate, BatteryPower, RemoteWake off, NormallyConnectable off, supervision timeout 2 s, SSR max latency 450 ms |
+| PnP `0x1200` | vendor ID source Bluetooth SIG, vendor `0x0111` (SteelSeries), product `0x1420`, version `0x0001` |
+| `00000000-deca-fade-deca-deafdecacaff` | Apple accessory protocol on RFCOMM channel 1 (MFi authentication for iOS, not needed for HID) |
+
+## Hardware (FCC ID ZHK-GC-00004)
+
+Model GC-00004, Bluetooth 4.1 BR/EDR without LE, 820 mAh Li-po, Lightning charging port. D-pad and face buttons sit on pressure-sensing membranes, which is why every button reports 0–255.
 
 ## Why the kernel gets it wrong
 

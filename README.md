@@ -18,6 +18,7 @@ The Nimbus is built for Apple devices. On Linux the stock `hid-generic` driver m
 | L2 / R2 | on/off buttons | analog, 0–255 |
 | Sticks | working | working |
 | L3 / R3 / Back | not available | via Home combos |
+| Player LED | off | player 1 lit on connect |
 
 ## Install
 
@@ -81,7 +82,6 @@ Details, including a case study on *Need for Speed: Most Wanted* (2005), are in 
 
 ## Known limitations
 
-- Player LEDs: the hidraw node rejects the write with `EINVAL`, so `--led` is off by default.
 - Tested on one controller and one setup (Debian 13, kernel 7.1, Wine-GE 8). Reports from other distributions and Nimbus revisions are welcome.
 - The Nimbus+ and USB variants use different IDs and are not covered.
 

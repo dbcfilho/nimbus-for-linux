@@ -92,6 +92,13 @@ class Config(unittest.TestCase):
         z = {c: lo for c, lo, *_ in n.abs_setup("standard")}
         self.assertEqual((z[n.ABS_Z], z[n.ABS_RZ]), (0, 0))
 
+    def test_pedal_usa_curso_inteiro_e_botoes_joystick(self):
+        z = {c: lo for c, lo, *_ in n.abs_setup("pedal")}
+        self.assertEqual((z[n.ABS_Z], z[n.ABS_RZ]), (0, 0))
+        e = ev(report(A=255), profile="pedal")
+        self.assertEqual(e[n.EV_KEY, 0x120], 1)
+        self.assertNotIn((n.EV_KEY, n.BTN_SOUTH), e)
+
     def test_read_profile(self):
         with tempfile.TemporaryDirectory() as d:
             p = os.path.join(d, "profile")
