@@ -42,6 +42,22 @@ class Translate(unittest.TestCase):
         self.assertEqual(ev(r, home="mode")[n.EV_KEY, n.BTN_MODE], 1)
         self.assertEqual(ev(r, profile="game")[n.EV_KEY, n.GAME_HOME], 1)
 
+    def test_combinacoes_do_home(self):
+        e = ev(report(home=1, L1=255))
+        self.assertEqual((e[n.EV_KEY, n.BTN_THUMBL], e[n.EV_KEY, n.BTN_START], e[n.EV_KEY, n.BTN_TL]), (1, 0, 0))
+        e = ev(report(home=1, R1=255))
+        self.assertEqual((e[n.EV_KEY, n.BTN_THUMBR], e[n.EV_KEY, n.BTN_START], e[n.EV_KEY, n.BTN_TR]), (1, 0, 0))
+        e = ev(report(home=1, L1=255, R1=255))
+        self.assertEqual((e[n.EV_KEY, n.BTN_SELECT], e[n.EV_KEY, n.BTN_THUMBL], e[n.EV_KEY, n.BTN_TL]), (1, 0, 0))
+        e = ev(report(L1=255))  # sem Home, L1 segue sendo L1
+        self.assertEqual((e[n.EV_KEY, n.BTN_TL], e[n.EV_KEY, n.BTN_THUMBL]), (1, 0))
+        e = ev(report(home=1, L1=255), profile="game")
+        self.assertEqual((e[n.EV_KEY, n.GAME_THUMBL], e[n.EV_KEY, 0x124]), (1, 0))
+
+    def test_home_modo_mode_nao_tem_combinacao(self):
+        e = ev(report(home=1, L1=255), home="mode")
+        self.assertEqual((e[n.EV_KEY, n.BTN_MODE], e[n.EV_KEY, n.BTN_TL], e[n.EV_KEY, n.BTN_THUMBL]), (1, 1, 0))
+
     def test_gatilhos_analogicos_passam_direto(self):
         e = ev(report(L2=77, R2=200))
         self.assertEqual((e[n.EV_ABS, n.ABS_Z], e[n.EV_ABS, n.ABS_RZ]), (77, 200))

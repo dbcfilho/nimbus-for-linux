@@ -8,7 +8,8 @@ daemon lê o relatório bruto via hidraw e expõe um gamepad evdev (uinput).
 Layout do relatório (descritor HID lido do próprio controle):
   [0..3]   D-pad Up, Right, Down, Left   (uint8, 0..255)
   [4..11]  A, B, X, Y, L1, R1, L2, R2    (uint8, 0..255; L2/R2 são analógicos)
-  [12]     bit0 = Home/Menu (Consumer AC Home)
+  [12]     bit0 = Home/Menu (Consumer AC Home); sozinho vira Start
+           L1+Home = L3, R1+Home = R3, L1+R1+Home = Back (como no MFIGamepadFeeder)
   [13..16] stick esq X, esq Y, dir X, dir Y (int8, -127..127; cima = positivo)
 Relatório de saída (1 byte): nibble baixo = LEDs de jogador.
 
@@ -63,6 +64,7 @@ BUTTONS = {
 }
 HOME_CODES = {"start": BTN_START, "mode": BTN_MODE}
 GAME_HOME = 0x126
+GAME_BACK, GAME_THUMBL, GAME_THUMBR = 0x127, 0x128, 0x129
 STANDARD_KEYS = (BTN_SOUTH, BTN_EAST, BTN_NORTH, BTN_WEST, BTN_TL, BTN_TR,
                  BTN_SELECT, BTN_START, BTN_MODE, BTN_THUMBL, BTN_THUMBR)
 
@@ -87,7 +89,7 @@ def read_profile(path=PROFILE_FILE):
 
 def key_codes(profile):
     if profile == "game":
-        return [c for _, c in BUTTONS["game"]] + [GAME_HOME]
+        return [c for _, c in BUTTONS["game"]] + [GAME_HOME, GAME_BACK, GAME_THUMBL, GAME_THUMBR]
     return list(STANDARD_KEYS)
 
 
@@ -104,8 +106,29 @@ def abs_setup(profile):
 
 def translate(r, profile, home="start", flip_y=False):
     """Relatório bruto de 17 bytes -> lista de (tipo, código, valor) evdev. Função pura."""
-    ev = [(EV_KEY, code, 1 if r[idx] else 0) for idx, code in BUTTONS[profile]]
-    ev.append((EV_KEY, GAME_HOME if profile == "game" else HOME_CODES[home], r[12] & 1))
+    pressed = {idx: bool(r[idx]) for idx, _ in BUTTONS[profile]}
+    menu = bool(r[12] & 1)
+    back = thumbl = thumbr = False
+    if menu and (profile == "game" or home == "start"):
+        # o Nimbus só tem um botão de menu; o driver original (MFIGamepadFeeder) cria o resto por
+        # combinação: L1+Home = L3, R1+Home = R3, L1+R1+Home = Back. A combinação consome os botões.
+        l1, r1 = pressed[8], pressed[9]
+        if l1 and r1:
+            back = True
+        elif l1:
+            thumbl = True
+        elif r1:
+            thumbr = True
+        if l1 or r1:
+            menu = False
+            pressed[8] = pressed[9] = False
+    ev = [(EV_KEY, code, int(pressed[idx])) for idx, code in BUTTONS[profile]]
+    if profile == "game":
+        ev += [(EV_KEY, GAME_HOME, int(menu)), (EV_KEY, GAME_BACK, int(back)),
+               (EV_KEY, GAME_THUMBL, int(thumbl)), (EV_KEY, GAME_THUMBR, int(thumbr))]
+    else:
+        ev += [(EV_KEY, HOME_CODES[home], int(menu)), (EV_KEY, BTN_SELECT, int(back)),
+               (EV_KEY, BTN_THUMBL, int(thumbl)), (EV_KEY, BTN_THUMBR, int(thumbr))]
     ev.append((EV_ABS, ABS_Z, r[10]))
     ev.append((EV_ABS, ABS_RZ, r[11]))
     up, right, down, left = (r[i] >= DPAD_ON for i in range(4))
